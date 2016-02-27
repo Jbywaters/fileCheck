@@ -1,0 +1,6 @@
+setup.py
+NewPythonProject2.egg-info/PKG-INFO
+NewPythonProject2.egg-info/SOURCES.txt
+NewPythonProject2.egg-info/dependency_links.txt
+NewPythonProject2.egg-info/requires.txt
+NewPythonProject2.egg-info/top_level.txt
