@@ -1,10 +1,16 @@
-import sys, os, sys, getopt, urllib, urllib2, re, EnglishDetect, av_multiscan
-from operator import itemgetter
-import dpkt
+import getopt
+import os
+import re
+import sys
 import time
-import avsubmit
-import pescanner
+import urllib
+import urllib2
 import pefile
+
+import EnglishDetect
+import av_multiscan
+import avsubmit
+
 try:
     import simplejson
 except ImportError:
@@ -16,18 +22,17 @@ except ImportError:
 
 # VirusTotal API Key
 api = 'C:\Git\Confidential\APIKEYS.txt'
-f = open(api, "rb") #one line file with just the api Key
+f = open(api, "rb")  # one line file with just the api Key
 vtapi = f.read()
 f.close()
 
 
-
 class VirusTotal:
-
     def __init__(self, file):
         self.alerts = ['OpenProcess', 'VirtualAllocEx', 'WriteProcessMemory', 'CreateRemoteThread', 'ReadProcessMemory',
-          'CreateProcess', 'WinExec', 'ShellExecute', 'HttpSendRequest', 'InternetReadFile', 'InternetConnect',
-          'CreateService', 'StartService']
+                       'CreateProcess', 'WinExec', 'ShellExecute', 'HttpSendRequest', 'InternetReadFile',
+                       'InternetConnect',
+                       'CreateService', 'StartService']
         self.file = file
         f = open(self.file, "rb")
         self.content = f.read()
@@ -87,7 +92,7 @@ class VirusTotal:
         regexp = '[%s]{%d,}' % (chars, shortest_run)
         pattern = re.compile(regexp)
         self.strings = pattern.findall(self.content)
-        self.stringscore=[[]]
+        self.stringscore = [[]]
         self.stringscore[0] = (self.strings)
 
     def getIPs(self):
@@ -99,34 +104,35 @@ class VirusTotal:
         global newstringnum
         # print len(self.strings
         englishScorer = EnglishDetect.EnglishDetect()
-        self.stringscore.append([0]*len(self.stringscore[0]))
+        self.stringscore.append([0] * len(self.stringscore[0]))
         for index, string in enumerate(self.stringscore[0]):
             self.stringscore[1][index] = englishScorer.scoreCheck(string)
         sortedstrings = zip(self.stringscore[0], self.stringscore[1])
         sortedstrings = sorted(sortedstrings, key=lambda score: score[1])
-        index=0
+        index = 0
         for score in sortedstrings:
-            if score[1]<3:
+            if score[1] < 3:
                 sortedstrings.pop(index)
             else:
-                index+=1
+                index += 1
         return sortedstrings
 
-    def check_imports(self, pe):
+    def check_imports(self, pe, flag=0):
         ret = []
         if not hasattr(pe, 'DIRECTORY_ENTRY_IMPORT'):
             return ret
         for lib in pe.DIRECTORY_ENTRY_IMPORT:
             for imp in lib.imports:
-                if (imp.name != None) and (imp.name != "") and '\t\t'+imp.name not in ret:
-                    warning=0
+                if (imp.name != None) and (imp.name != "") and '\t\t' + imp.name not in ret:
+                    warning = 0
                     for alert in self.alerts:
                         if imp.name.startswith(alert):
-                            ret.append("WARNING\t"+hex(imp.thunk_rva)+'\t'+imp.name)
+                            ret.append("WARNING\t" + hex(imp.thunk_rva) + '\t' + imp.name)
                             warning = 1
-                    if warning==0:
-                        ret.append('\t\t'+imp.name)
+                    if warning == 0 and flag == 1:
+                        ret.append('\t\t' + imp.name)
         return ret
+
     def check_exports(self, pe):
         ret = []
         if not hasattr(pe, 'DIRECTORY_ENTRY_EXPORT'):
@@ -135,11 +141,28 @@ class VirusTotal:
         for lib in pe.DIRECTORY_ENTRY_EXPORT:
             for exp in lib.exports:
                 if (exp.name != None) and (exp.name != ""):
-                    ret.append('\t\t'+exp.name)
+                    ret.append('\t\t' + exp.name)
         return ret
+
+
+def ssdeep(file_name):
+    stringreturn = []
+    stringreturn.append("[*] Beginning analysis on " + file_name + "...")
+    MD5 = hashlib.md5(open(file_name, 'rb').read()).hexdigest()
+    SHA = hashlib.sha256(open(file_name, 'rb').read()).hexdigest()
+    ssDeep = av_multiscan.ssdeep(file_name)
+    stringreturn.append("MD5 Hash:\t" + MD5)
+    stringreturn.append("SHA256 Hash:\t" + SHA)
+    stringreturn.append("SSDEEP:\t" + ssDeep)
+    return stringreturn
+
 
 def usage():
     print "[!] Provide a file name"
+
+
+def badfile():
+    print "[!] Bad File Name, Cannot open"
 
 
 def main(argv):
@@ -160,18 +183,19 @@ def main(argv):
         else:
             usage()
             sys.exit()
+    try:
+        open(file_name, 'rb')
+    except IOError:
+        badfile()
+        sys.exit()
 
-    print "[*] Beginning analysis on " + file_name + "..."
-    MD5 = hashlib.md5(open(file_name, 'rb').read()).hexdigest()
-    SHA = hashlib.sha256(open(file_name, 'rb').read()).hexdigest()
-    ssDeep = av_multiscan.ssdeep(file_name)
-    print "MD5 Hash:\t" + MD5
-    print "SHA256 Hash:\t" + SHA
-    print "SSDEEP:\t" + ssDeep
+    for line in ssdeep(file_name):
+        print line
+
     vT = VirusTotal(file_name)
     #print vT.submit()
     vT.process()
-    i = vT.charFrequencyScore()
+    """i = vT.charFrequencyScore()
     print 'printed strings to strings.txt'
     ipList = vT.getIPs()
     if ipList is None:
@@ -179,13 +203,14 @@ def main(argv):
     else:
         print 'IP LIST:\n'
         print ipList
+    print '\n\n'"""
     pe = pefile.PE(file_name)
     print "Magic Number:\t" + hex(pe.DOS_HEADER.e_magic)
     print "Entry Point:\t" + hex(pe.OPTIONAL_HEADER.AddressOfEntryPoint)
     print "Sections:"
     print "\tName\tVirtual Address"
     for section in pe.sections:
-        print '\t' + section.Name + '\t'+ hex(section.VirtualAddress)
+        print '\t' + section.Name + '\t' + hex(section.VirtualAddress)
     imports = vT.check_imports(pe)
     print 'Imports: '
     for line in imports:
@@ -193,41 +218,6 @@ def main(argv):
     exports = vT.check_exports(pe)
     for line in exports:
         print line
-    with open('CryptoLocker.pcap') as F:
-        pcap = dpkt.pcap.Reader(F)
-        for ts, buf in pcap:
-            try:
-                eth = dpkt.ethernet.Ethernet(buf)
-            except:
-                continue
-            if eth.type!=2048:
-                continue
-            try:
-                ip=eth.data
-            except:
-                continue
-            if ip.p!=17:
-                continue
-            try:
-                udp=ip.data
-            except:
-                continue
-            if udp.sport!=53 and udp.dport!=53:
-                continue
-            try:
-                dns = dpkt.dns.DNS(udp.data)
-            except:
-                continue
-            if dns.qr != dpkt.dns.DNS_R:
-                continue
-            if dns.opcode!= dpkt.DNS_QUERY:
-                continue
-            if len(dns.an)<1:
-                continue
-            for qname in dns.qd:
-                print qname.name
-
-
 
 
 if __name__ == '__main__':
